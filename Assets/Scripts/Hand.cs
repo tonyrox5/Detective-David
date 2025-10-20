@@ -78,4 +78,24 @@ public class HandSystem : MonoBehaviour
             selectedSlotIndex = -1;
         }
     }
+
+    // --- YENÝ EKLENEN FONKSÝYON ---
+    // Verilen itemID'ye sahip bir eþya envanterdeki (3 slot) herhangi bir yerde var mý?
+    public bool HasItem(string itemID)
+    {
+        foreach (GameObject item in handSlots)
+        {
+            // Slot boþ deðilse
+            if (item != null)
+            {
+                // Üzerinde Inspectable script'i var mý ve ID'si eþleþiyor mu?
+                if (item.TryGetComponent<Inspectable>(out Inspectable inspectable) && inspectable.itemID == itemID)
+                {
+                    return true; // Eþya bulundu!
+                }
+            }
+        }
+        return false; // Eþya bulunamadý
+    }
+    // --- YENÝ FONKSÝYONUN SONU ---
 }
