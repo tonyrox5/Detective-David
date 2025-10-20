@@ -20,17 +20,9 @@ public class MouseLook : MonoBehaviour
         playerMovementScript = GetComponentInParent<ClassicPlayerMovement>();
     }
 
-    // --- BU FONKSÝYON GÜNCELLENDÝ ---
     void Update()
     {
-        // YENÝ KONTROL: Eðer diyalog aktifse, oyuncu hiçbir þey yapamaz.
-        // Bu, konuþma sýrasýnda kameranýn dönmesini veya baþka þeylerle etkileþime girmesini engeller.
-        if (DialogueUIManager.instance != null && DialogueUIManager.instance.IsDialogueActive())
-        {
-            return;
-        }
-        // --- YENÝ KONTROLÜN SONU ---
-
+        if (DialogueUIManager.instance != null && DialogueUIManager.instance.IsDialogueActive()) { return; }
         if (isInspecting)
         {
             if (Input.GetKeyDown(KeyCode.E) && !currentlyInspectedObject.IsTransitioning()) { EndInspection(); }
@@ -58,27 +50,29 @@ public class MouseLook : MonoBehaviour
         RaycastHit hit;
         if (Physics.Raycast(transform.position, transform.forward, out hit, interactionDistance))
         {
-            // --- YENÝ EKLENEN BÖLÜM: DÝYALOG KONTROLÜ ---
-            // Baktýðýmýz obje konuþulabilir bir NPC mi? (Bu kontrolü en baþa alýyoruz)
             if (hit.collider.TryGetComponent<DialogueTrigger>(out DialogueTrigger dialogueTrigger))
             {
-                // Eðer 'T' tuþuna basýlýrsa
                 if (Input.GetKeyDown(KeyCode.T))
                 {
-                    // Diyalog yöneticisini çaðýr ve konuþmayý baþlat.
-                    DialogueUIManager.instance.StartDialogue(dialogueTrigger.startingConversation);
+                    // YENÝ MANTIK: Trigger'dan doðru konuþmayý iste
+                    DialogueNode conversationToStart = dialogueTrigger.GetConversation();
+                    if (conversationToStart != null)
+                    {
+                        DialogueUIManager.instance.StartDialogue(conversationToStart);
+                    }
+                    else
+                    {
+                        Debug.Log("Bu karakterin þu an söyleyecek bir þeyi yok.");
+                    }
                 }
             }
-            // --- YENÝ BÖLÜMÜN SONU ---
-
-            // Diðer etkileþimler eskisi gibi devam ediyor
             else
             {
                 float currentTime = TimeManager.instance.GetCurrentTime();
                 bool isNight = (currentTime >= 19 || currentTime < 7);
                 GameObject heldItem = HandSystem.instance.GetHeldItem();
 
-                if (heldItem == null) // ELÝMÝZ BOÞ ÝSE
+                if (heldItem == null)
                 {
                     if (hit.collider.TryGetComponent<PlacementPoint>(out PlacementPoint pointToTakeFrom) && pointToTakeFrom.itemInSpot != null)
                     {
@@ -86,80 +80,34 @@ public class MouseLook : MonoBehaviour
                         {
                             if (Input.GetKeyDown(KeyCode.E))
                             {
-                                if (isNight && item.isTakableAtNight)
-                                {
-                                    HandSystem.instance.AddItem(pointToTakeFrom.TakeItem());
-                                }
-                                else
-                                {
-                                    StartInspection(item);
-                                }
+                                if (isNight && item.isTakableAtNight) { HandSystem.instance.AddItem(pointToTakeFrom.TakeItem()); }
+                                else { StartInspection(item); }
                             }
                         }
                     }
-                    else if (hit.collider.CompareTag("Bed"))
-                    {
-                        if (Input.GetKeyDown(KeyCode.E)) { TimeManager.instance.Sleep(); }
-                    }
-                    else if (hit.collider.TryGetComponent<DoorController>(out DoorController door))
-                    {
-                        if (Input.GetKeyDown(KeyCode.E))
-                        {
-                            door.Interact();
-                        }
-                    }
+                    else if (hit.collider.CompareTag("Bed")) { if (Input.GetKeyDown(KeyCode.E)) { TimeManager.instance.Sleep(); } }
+                    else if (hit.collider.TryGetComponent<DoorController>(out DoorController door)) { if (Input.GetKeyDown(KeyCode.E)) { door.Interact(); } }
                 }
-                else // ELÝMÝZ DOLU ÝSE
+                else
                 {
                     if (hit.collider.TryGetComponent<DoorController>(out DoorController lockedDoor) && lockedDoor.IsLocked())
                     {
                         if (Input.GetKeyDown(KeyCode.E))
                         {
                             string heldItemID = heldItem.GetComponent<Inspectable>().itemID;
-                            if (heldItemID == lockedDoor.GetRequiredItemID())
-                            {
-                                lockedDoor.Unlock();
-                                lockedDoor.Interact();
-                            }
-                            else
-                            {
-                                Debug.Log("Yanlýþ anahtar.");
-                            }
+                            if (heldItemID == lockedDoor.GetRequiredItemID()) { lockedDoor.Unlock(); lockedDoor.Interact(); }
+                            else { Debug.Log("Yanlýþ anahtar."); }
                         }
                     }
                     else if (hit.collider.TryGetComponent<PlacementPoint>(out PlacementPoint pointToPlaceTo) && pointToPlaceTo.itemInSpot == null)
                     {
-                        if (Input.GetKeyDown(KeyCode.E))
-                        {
-                            if (pointToPlaceTo.CanAcceptItem(heldItem))
-                            {
-                                HandSystem.instance.RemoveHeldItem();
-                                pointToPlaceTo.PlaceItem(heldItem);
-                            }
-                        }
+                        if (Input.GetKeyDown(KeyCode.E)) { if (pointToPlaceTo.CanAcceptItem(heldItem)) { HandSystem.instance.RemoveHeldItem(); pointToPlaceTo.PlaceItem(heldItem); } }
                     }
                 }
             }
         }
     }
 
-    void StartInspection(Inspectable objectToInspect)
-    {
-        isInspecting = true;
-        currentlyInspectedObject = objectToInspect;
-        playerMovementScript.enabled = false;
-        currentlyInspectedObject.StartInspection();
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-    }
-
-    void EndInspection()
-    {
-        isInspecting = false;
-        playerMovementScript.enabled = true;
-        currentlyInspectedObject.StopInspection();
-        currentlyInspectedObject = null;
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-    }
+    void StartInspection(Inspectable objectToInspect) { isInspecting = true; currentlyInspectedObject = objectToInspect; playerMovementScript.enabled = false; currentlyInspectedObject.StartInspection(); Cursor.lockState = CursorLockMode.None; Cursor.visible = true; }
+    void EndInspection() { isInspecting = false; playerMovementScript.enabled = true; currentlyInspectedObject.StopInspection(); currentlyInspectedObject = null; Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
 }

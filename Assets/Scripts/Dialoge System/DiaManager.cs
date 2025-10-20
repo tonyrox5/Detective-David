@@ -8,26 +8,19 @@ using UnityEngine.EventSystems;
 public class DialogueUIManager : MonoBehaviour
 {
     public static DialogueUIManager instance;
-
     [Header("UI References")]
     [SerializeField] private GameObject dialoguePanel;
     [SerializeField] private TextMeshProUGUI speakerNameText;
     [SerializeField] private TextMeshProUGUI dialogueLineText;
     [SerializeField] private GameObject choicesLayout;
     [SerializeField] private Button[] choiceButtons;
-
     [Header("Oyuncu Kontrol Referanslarý")]
     [SerializeField] private ClassicPlayerMovement playerMovement;
     [SerializeField] private MouseLook mouseLook;
-
     private DialogueNode currentNode;
     private bool isDialogueActive = false;
 
-    private void Awake()
-    {
-        if (instance == null) instance = this;
-        else Destroy(gameObject);
-    }
+    private void Awake() { if (instance == null) instance = this; else Destroy(gameObject); }
 
     public void StartDialogue(DialogueNode startingNode)
     {
@@ -45,18 +38,12 @@ public class DialogueUIManager : MonoBehaviour
         currentNode = node;
         speakerNameText.text = node.speakerName;
         dialogueLineText.text = node.dialogueLine;
-
-        foreach (var button in choiceButtons)
-        {
-            button.onClick.RemoveAllListeners();
-            button.gameObject.SetActive(false);
-        }
+        foreach (var button in choiceButtons) { button.onClick.RemoveAllListeners(); button.gameObject.SetActive(false); }
 
         if (node.playerResponses.Length > 0)
         {
             choicesLayout.SetActive(true);
             int visibleButtonIndex = 0;
-
             for (int i = 0; i < node.playerResponses.Length; i++)
             {
                 if (CheckCondition(node.playerResponses[i].condition))
@@ -80,24 +67,29 @@ public class DialogueUIManager : MonoBehaviour
         }
     }
 
-    // --- BU FONKSÝYON GÜNCELLENDÝ (YENÝ KOÞUL EKLENDÝ) ---
-    private bool CheckCondition(Condition condition)
+    // --- BU FONKSÝYON GÜNCELLENDÝ (YENÝ KOÞUL EKLENDÝ VE PUBLIC YAPILDI) ---
+    public bool CheckCondition(Condition condition)
     {
+        if (condition == null) return true;
         switch (condition.type)
         {
             case Condition.ConditionType.TimeOfDay:
                 float currentTime = TimeManager.instance.GetCurrentTime();
                 return currentTime >= condition.minTime && currentTime < condition.maxTime;
 
-            // YENÝ EKLENEN DURUM:
             case Condition.ConditionType.HasItem:
-                // HandSystem var mý ve istenen itemID boþ deðil mi diye kontrol et
                 if (HandSystem.instance != null && !string.IsNullOrEmpty(condition.requiredItemID))
                 {
-                    // HandSystem'e "bu ID'ye sahip bir eþyam var mý?" diye sor.
                     return HandSystem.instance.HasItem(condition.requiredItemID);
                 }
-                return false; // Eðer HandSystem yoksa veya ID boþsa, koþul saðlanamaz.
+                return false;
+
+            case Condition.ConditionType.Day:
+                if (TimeManager.instance != null)
+                {
+                    return TimeManager.instance.GetDayNumber() == condition.requiredDay;
+                }
+                return false;
 
             case Condition.ConditionType.None:
             default:
@@ -105,31 +97,8 @@ public class DialogueUIManager : MonoBehaviour
         }
     }
 
-    private void OnChoiceSelected(PlayerResponse response)
-    {
-        EventSystem.current.SetSelectedGameObject(null);
-        if (response.nextNode != null) { DisplayNode(response.nextNode); }
-        else { EndDialogue(); }
-    }
-
-    private IEnumerator WaitForEndOfDialogue()
-    {
-        yield return new WaitUntil(() => Input.GetMouseButtonDown(0));
-        EndDialogue();
-    }
-
-    private void EndDialogue()
-    {
-        isDialogueActive = false;
-        dialoguePanel.SetActive(false);
-        playerMovement.enabled = true;
-        mouseLook.enabled = true;
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-    }
-
-    public bool IsDialogueActive()
-    {
-        return isDialogueActive;
-    }
+    private void OnChoiceSelected(PlayerResponse response) { EventSystem.current.SetSelectedGameObject(null); if (response.nextNode != null) { DisplayNode(response.nextNode); } else { EndDialogue(); } }
+    private IEnumerator WaitForEndOfDialogue() { yield return new WaitUntil(() => Input.GetMouseButtonDown(0)); EndDialogue(); }
+    private void EndDialogue() { isDialogueActive = false; dialoguePanel.SetActive(false); playerMovement.enabled = true; mouseLook.enabled = true; Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
+    public bool IsDialogueActive() { return isDialogueActive; }
 }

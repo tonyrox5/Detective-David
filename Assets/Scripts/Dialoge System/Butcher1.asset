@@ -12,6 +12,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 281d2140ade028245a03fa1f29e72a23, type: 3}
   m_Name: Butcher1
   m_EditorClassIdentifier: Assembly-CSharp::DialogueNode
-  speakerName: 
-  dialogueLine: 
-  playerResponses: []
+  speakerName: Butcher
+  dialogueLine: Oh,Welcome! Why are you here?
+  playerResponses:
+  - responseText: Non of your business
+    nextNode: {fileID: 11400000, guid: 2aa5c00fd40387943874208c08fd761e, type: 2}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 24
+      requiredItemID: 
+      requiredDay: 1
+  - responseText: I'm here for the investigation of this town
+    nextNode: {fileID: 11400000, guid: 2aa5c00fd40387943874208c08fd761e, type: 2}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 24
+      requiredItemID: 
+      requiredDay: 1

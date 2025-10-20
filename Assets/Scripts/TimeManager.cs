@@ -109,4 +109,10 @@ public class TimeManager : MonoBehaviour
     {
         return currentTime;
     }
+    // --- YENÝ EKLENEN FONKSÝYON ---
+    public int GetDayNumber()
+    {
+        return dayNumber;
+    }
+    // --- YENÝ FONKSÝYONUN SONU ---
 }

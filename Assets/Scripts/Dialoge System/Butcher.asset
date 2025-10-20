@@ -12,6 +12,30 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 281d2140ade028245a03fa1f29e72a23, type: 3}
   m_Name: Butcher
   m_EditorClassIdentifier: Assembly-CSharp::DialogueNode
-  speakerName: 
-  dialogueLine: 
-  playerResponses: []
+  speakerName: Butcher
+  dialogueLine: Hi,you must be new detective.What was your name?
+  playerResponses:
+  - responseText: I'm David
+    nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 24
+      requiredItemID: 
+      requiredDay: 1
+  - responseText: I'm Detective David
+    nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 24
+      requiredItemID: 
+      requiredDay: 1
+  - responseText: D.D.
+    nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 24
+      requiredItemID: 
+      requiredDay: 1

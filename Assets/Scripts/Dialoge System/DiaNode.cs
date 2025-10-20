@@ -17,7 +17,6 @@ public class PlayerResponse
 {
     public string responseText;
     public DialogueNode nextNode;
-
     [Header("Görünme Koþulu")]
     public Condition condition;
 }
@@ -25,19 +24,17 @@ public class PlayerResponse
 [System.Serializable]
 public class Condition
 {
-    // --- YENÝ KOÞUL TÜRÜNÜ EKLEDÝK ---
-    public enum ConditionType { None, TimeOfDay, HasItem }
+    public enum ConditionType { None, TimeOfDay, HasItem, Day }
     public ConditionType type = ConditionType.None;
 
     [Header("Time of Day Koþulu")]
-    [Tooltip("Sadece 'TimeOfDay' seçiliyken geçerlidir.")]
     public float minTime = 0f;
-    [Tooltip("Sadece 'TimeOfDay' seçiliyken geçerlidir.")]
     public float maxTime = 24f;
 
-    // --- YENÝ EKLENEN BÖLÜM ---
     [Header("Has Item Koþulu")]
-    [Tooltip("Sadece 'HasItem' seçiliyken geçerlidir. Oyuncunun envanterinde olmasý gereken eþyanýn ID'si.")]
     public string requiredItemID = "";
-    // --- YENÝ BÖLÜMÜN SONU ---
+
+    [Header("Day Koþulu")]
+    [Tooltip("Bu konuþmanýn/cevabýn sadece belirtilen günde görünmesini saðlar.")]
+    public int requiredDay = 1;
 }

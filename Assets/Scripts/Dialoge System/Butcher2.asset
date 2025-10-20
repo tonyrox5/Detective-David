@@ -12,6 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 281d2140ade028245a03fa1f29e72a23, type: 3}
   m_Name: Butcher2
   m_EditorClassIdentifier: Assembly-CSharp::DialogueNode
-  speakerName: 
-  dialogueLine: 
-  playerResponses: []
+  speakerName: Butcher
+  dialogueLine: 'I have to take care my butcher place.Sorry
+
+    If you want to talk
+    to me about this murder,Come tomorrow.'
+  playerResponses:
+  - responseText: I will.
+    nextNode: {fileID: 0}
+    condition:
+      type: 0
+      minTime: 0
+      maxTime: 0
+      requiredItemID: 
+      requiredDay: 0
