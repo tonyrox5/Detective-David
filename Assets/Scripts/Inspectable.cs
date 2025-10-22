@@ -296,7 +296,7 @@ public class Inspectable : MonoBehaviour
             rb.useGravity = enabled;
             if (!enabled)
             {
-                rb.linearVelocity = Vector3.zero;          // FIX: linearVelocity deðil
+                rb.linearVelocity = Vector3.zero;          
                 rb.angularVelocity = Vector3.zero;
             }
         }

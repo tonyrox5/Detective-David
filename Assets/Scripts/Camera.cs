@@ -22,10 +22,13 @@ public class MouseLook : MonoBehaviour
 
     void Update()
     {
-        if (DialogueUIManager.instance != null && DialogueUIManager.instance.IsDialogueActive()) { return; }
+        if (TimeManager.instance != null && TimeManager.instance.IsSleeping) return; // yeni
+        if (DialogueUIManager.instance != null && DialogueUIManager.instance.IsDialogueActive()) return;
+
         if (isInspecting)
         {
-            if (Input.GetKeyDown(KeyCode.E) && !currentlyInspectedObject.IsTransitioning()) { EndInspection(); }
+            if (Input.GetKeyDown(KeyCode.E) && !currentlyInspectedObject.IsTransitioning())
+                EndInspection();
         }
         else
         {
@@ -33,6 +36,7 @@ public class MouseLook : MonoBehaviour
             HandleInteraction();
         }
     }
+
 
     private void HandleMouseLook()
     {
