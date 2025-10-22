@@ -17,7 +17,7 @@ public class Inspectable : MonoBehaviour
     private PlacementPoint homePoint;
 
     [Header("Inspection Fit-to-Camera")]
-    public float screenFill = 0.55f;
+    [Range(0.1f, 0.95f)] public float screenFill = 0.55f;
     public float minCameraPadding = 0.2f;
     public float extraDistance = 0.0f;
 
@@ -30,21 +30,34 @@ public class Inspectable : MonoBehaviour
 
     private bool inspecting = false;
     private bool transitioning = false;
+
     private Transform originalParent;
-    private Vector3 originalLocalPos;
-    private Quaternion originalLocalRot;
+    private Vector3 originalPos;
+    private Quaternion originalRot;
     private Vector3 originalLocalScale;
+    private Vector3 originalWorldScale;            // NEW: dünya ölçeði
+    private Vector3 inspectionBaseLocalScale;      // NEW: anchor altýnda zoom’un tabaný
+    private bool hadParent;
+
     private Rigidbody rb;
-    private List<Collider> colliders = new List<Collider>();
+    private readonly List<Collider> colliders = new List<Collider>();
     private float currentZoom = 1f;
     private Transform runtimeAnchor;
     private Transform mainCameraTransform;
+    private Camera currentCam;
+
+    private void CacheCamera()
+    {
+        currentCam = Camera.main;
+        if (currentCam == null) currentCam = FindFirstObjectByType<Camera>();
+        if (currentCam != null) mainCameraTransform = currentCam.transform;
+    }
 
     void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        GetComponentsInChildren(colliders);
-        mainCameraTransform = Camera.main.transform;
+        GetComponentsInChildren<Collider>(colliders);
+        CacheCamera();
     }
 
     void Start()
@@ -56,15 +69,25 @@ public class Inspectable : MonoBehaviour
             homePoint.isHotelSpot = false;
             homePoint.isAutoCreatedReturnPoint = true;
             homePoint.itemInSpot = this.gameObject;
+
             transform.SetParent(homePoint.transform);
             transform.localPosition = Vector3.zero;
             transform.localRotation = Quaternion.identity;
+            // !!! ÖNEMLÝ: Burada scale’i 1’e ZORLAMAYIN. Dünya ölçeðini bozuyordu.
+            // transform.localScale = Vector3.one;
+
             if (homePoint.placementVisual != null) homePoint.placementVisual.SetActive(false);
         }
+
         if (homePoint != null && homePoint.itemInSpot == null)
         {
             homePoint.itemInSpot = this.gameObject;
             if (homePoint.placementVisual != null) homePoint.placementVisual.SetActive(false);
+        }
+
+        if (homePoint == null && !autoCreateHomePoint)
+        {
+            Debug.LogWarning($"Inspectable '{gameObject.name}' needs a PlacementPoint parent or Auto Create enabled!", this);
         }
     }
 
@@ -80,19 +103,34 @@ public class Inspectable : MonoBehaviour
     public void StartInspection()
     {
         if (transitioning || inspecting) return;
+        CacheCamera();
+        if (mainCameraTransform == null) { Debug.LogError("Cannot inspect, no active camera found!"); return; }
+
         originalParent = transform.parent;
-        originalLocalPos = transform.localPosition;
-        originalLocalRot = transform.localRotation;
+        hadParent = (originalParent != null);
+
+        if (hadParent) { originalPos = transform.localPosition; originalRot = transform.localRotation; }
+        else { originalPos = transform.position; originalRot = transform.rotation; }
+
         originalLocalScale = transform.localScale;
+        originalWorldScale = transform.lossyScale; // NEW: dünya ölçeðini kaydet
         currentZoom = 1f;
+
         SetPhysicsEnabled(false);
         Transform targetAnchor = PrepareAnchor();
-        StartCoroutine(MoveToTarget(targetAnchor, moveDuration, () => { inspecting = true; }));
+        StartCoroutine(MoveToTarget(targetAnchor, moveDuration, () =>
+        {
+            // Anchor’a geçtikten sonra Unity worldScale’i korur.
+            // Biz de o anda oluþan localScale’i zoom tabaný olarak kaydediyoruz.
+            inspectionBaseLocalScale = transform.localScale; // NEW
+            inspecting = true;
+        }));
     }
 
     public void StopInspection()
     {
         if (transitioning || !inspecting) return;
+
         inspecting = false;
         StartCoroutine(MoveBack(moveDuration, () =>
         {
@@ -102,36 +140,41 @@ public class Inspectable : MonoBehaviour
         }));
     }
 
-    public bool IsTransitioning()
-    {
-        return transitioning;
-    }
+    public bool IsTransitioning() => transitioning;
 
     private void HandleInspectionRotate()
     {
-        float horizontalInput = Input.GetAxis("Horizontal");
-        float verticalInput = Input.GetAxis("Vertical");
-        transform.Rotate(mainCameraTransform.up, -horizontalInput * rotateSensitivity * Time.deltaTime, Space.World);
-        transform.Rotate(mainCameraTransform.right, verticalInput * rotateSensitivity * Time.deltaTime, Space.World);
+        if (mainCameraTransform == null) return;
+        float h = Input.GetAxis("Horizontal");
+        float v = Input.GetAxis("Vertical");
+
+        transform.Rotate(mainCameraTransform.up, -h * rotateSensitivity * Time.deltaTime, Space.World);
+        transform.Rotate(mainCameraTransform.right, v * rotateSensitivity * Time.deltaTime, Space.World);
     }
 
     private void HandleInspectionZoom()
     {
         float scroll = Input.mouseScrollDelta.y;
         if (Mathf.Abs(scroll) < 0.001f) return;
+
         currentZoom = Mathf.Clamp(currentZoom + scroll * (zoomSensitivity * Time.deltaTime), zoomRange.x, zoomRange.y);
-        transform.localScale = originalLocalScale * currentZoom;
+
+        // ÖNEMLÝ: Zoom’u artýk inspectionBaseLocalScale’e göre yap
+        transform.localScale = inspectionBaseLocalScale * currentZoom;
     }
 
     private IEnumerator MoveToTarget(Transform target, float duration, System.Action onComplete)
     {
         transitioning = true;
+
         Vector3 startPos = transform.position;
         Quaternion startRot = transform.rotation;
         Vector3 startScale = transform.localScale;
+
         Vector3 endPos = target.position;
         Quaternion endRot = target.rotation;
-        Vector3 endScale = originalLocalScale;
+        Vector3 endScale = startScale; // worldScale korunacak, elle dokunmayacaðýz
+
         float t = 0f;
         while (t < 1f)
         {
@@ -142,10 +185,15 @@ public class Inspectable : MonoBehaviour
             transform.localScale = Vector3.Lerp(startScale, endScale, s);
             yield return null;
         }
+
+        // WorldPositionStays = true ? world scale korunur
         transform.SetParent(target, true);
+
+        // Burada local’i SIFIRLAMAYINCA pivot kayabilir; isterseniz sadece poz/rot’u sýfýrlayýn:
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
-        transform.localScale = originalLocalScale;
+        // !!! DÝKKAT: Burada localScale’e DOKUNMUYORUZ. (Büyüme hatasýný yapan satýr buydu)
+
         transitioning = false;
         onComplete?.Invoke();
     }
@@ -153,12 +201,27 @@ public class Inspectable : MonoBehaviour
     private IEnumerator MoveBack(float duration, System.Action onComplete)
     {
         transitioning = true;
+
         Vector3 startPos = transform.position;
         Quaternion startRot = transform.rotation;
         Vector3 startScale = transform.localScale;
-        Vector3 endPos = originalParent.TransformPoint(originalLocalPos);
-        Quaternion endRot = originalParent.rotation * originalLocalRot;
-        Vector3 endScale = originalLocalScale;
+
+        Vector3 endPos;
+        Quaternion endRot;
+        if (hadParent && originalParent != null)
+        {
+            endPos = originalParent.TransformPoint(originalPos);
+            endRot = originalParent.rotation * originalRot;
+        }
+        else
+        {
+            endPos = originalPos;
+            endRot = originalRot;
+        }
+
+        // Dünya ölçeðini geri taþýmak için parent’tan ayrýlýp Lerp
+        transform.SetParent(null);
+
         float t = 0f;
         while (t < 1f)
         {
@@ -166,58 +229,62 @@ public class Inspectable : MonoBehaviour
             float s = Smooth01(t);
             transform.position = Vector3.Lerp(startPos, endPos, s);
             transform.rotation = Quaternion.Slerp(startRot, endRot, s);
-            transform.localScale = Vector3.Lerp(startScale, endScale, s);
+            transform.localScale = Vector3.Lerp(startScale, startScale, s); // ölçeði sabit býrak
             yield return null;
         }
-        transform.SetParent(originalParent, true);
-        transform.localPosition = originalLocalPos;
-        transform.localRotation = originalLocalRot;
-        transform.localScale = originalLocalScale;
+
+        // Nihai yer
+        transform.position = endPos;
+        transform.rotation = endRot;
+
+        if (hadParent && originalParent != null)
+        {
+            // Orijinal parent’a dönerken orijinal LOCAL scale’i geri koymak güvenli
+            transform.SetParent(originalParent, worldPositionStays: true);
+            transform.localPosition = originalPos;
+            transform.localRotation = originalRot;
+            transform.localScale = originalLocalScale;
+        }
+        else
+        {
+            // Parent yoksa dünya ölçeðimizi korumuþtuk; dokunma
+        }
+
         transitioning = false;
         onComplete?.Invoke();
     }
 
-    private float Smooth01(float x)
-    {
-        x = Mathf.Clamp01(x);
-        return x * x * (3f - 2f * x);
-    }
+    private float Smooth01(float x) { x = Mathf.Clamp01(x); return x * x * (3f - 2f * x); }
 
-    // --- DEÐÝÞÝKLÝK BU FONKSÝYONUN ÝÇÝNDE ---
     private Transform PrepareAnchor()
     {
         if (inspectAnchor != null) return inspectAnchor;
 
-        // Önce transformdan Camera bileþenini alýyoruz
-        Camera cam = mainCameraTransform.GetComponent<Camera>();
-
-        if (cam == null) // Güvenlik kontrolü
+        if (currentCam == null)
         {
             runtimeAnchor = new GameObject($"__InspectAnchor_{name}").transform;
             runtimeAnchor.position = transform.position + transform.forward * 0.6f;
             return runtimeAnchor;
         }
+        if (runtimeAnchor == null) runtimeAnchor = new GameObject($"__InspectAnchor_{name}").transform;
 
-        runtimeAnchor = new GameObject($"__InspectAnchor_{name}").transform;
-
+        // Boyutu renderer bounds + mevcut world scale ile hesapla
         Bounds totalBounds = new Bounds(transform.position, Vector3.zero);
-        bool hasBounds = false;
+        bool has = false;
         foreach (var r in GetComponentsInChildren<Renderer>())
         {
-            if (!hasBounds) { totalBounds = r.bounds; hasBounds = true; }
-            else { totalBounds.Encapsulate(r.bounds); }
+            if (!has) { totalBounds = r.bounds; has = true; }
+            else totalBounds.Encapsulate(r.bounds);
         }
+        float objectSize = has ? Mathf.Max(totalBounds.size.x, totalBounds.size.y, totalBounds.size.z) : 0.25f;
 
-        float objectSize = Mathf.Max(totalBounds.size.x, totalBounds.size.y, totalBounds.size.z);
-
-        // Artýk "cam" deðiþkenini kullanarak doðru özelliklere ulaþýyoruz
-        float cameraFovToRad = cam.fieldOfView * 0.5f * Mathf.Deg2Rad;
-        float distance = (objectSize / (2.0f * screenFill)) / Mathf.Tan(cameraFovToRad);
-
-        distance = Mathf.Max(distance, cam.nearClipPlane + minCameraPadding) + extraDistance;
+        float fovRad = (currentCam.fieldOfView * 0.5f) * Mathf.Deg2Rad;
+        float distance = (objectSize / (2.0f * screenFill)) / Mathf.Max(0.0001f, Mathf.Tan(fovRad));
+        distance = Mathf.Max(distance, currentCam.nearClipPlane + minCameraPadding) + extraDistance;
 
         runtimeAnchor.position = mainCameraTransform.position + mainCameraTransform.forward * distance;
         runtimeAnchor.rotation = Quaternion.LookRotation(mainCameraTransform.forward, mainCameraTransform.up);
+
         return runtimeAnchor;
     }
 
@@ -227,8 +294,11 @@ public class Inspectable : MonoBehaviour
         {
             rb.isKinematic = !enabled;
             rb.useGravity = enabled;
-            rb.linearVelocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
+            if (!enabled)
+            {
+                rb.linearVelocity = Vector3.zero;          // FIX: linearVelocity deðil
+                rb.angularVelocity = Vector3.zero;
+            }
         }
         foreach (var col in colliders)
         {
