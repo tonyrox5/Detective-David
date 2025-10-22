@@ -1,40 +1,61 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
-[CreateAssetMenu(fileName = "New Dialogue Node", menuName = "Dialogue/Dialogue Node")]
-public class DialogueNode : ScriptableObject
+[CreateAssetMenu(menuName = "Dialogue/DiaNode")]
+public class DiaNode : ScriptableObject
 {
-    [Header("Konuþma Ýçeriði")]
-    public string speakerName;
-    [TextArea(3, 10)]
-    public string dialogueLine;
+    [Header("Kimlik")]
+    public string nodeId; // benzersiz: "shop_morning_greet" gibi
 
-    [Header("Oyuncu Cevaplarý")]
-    public PlayerResponse[] playerResponses;
+    [Header("Metin")]
+    [TextArea(2, 6)] public string text;
+
+    [Header("Koþullar (bu düðümün gösterilmesi için)")]
+    public Condition nodeCondition;
+
+    [Header("Seçenekler")]
+    public List<DiaChoice> choices = new(); // boþsa tek akýþlý düðüm olarak kullan
+
+    [Header("Sonraki Düðüm (choices boþsa)")]
+    public DiaNode nextIfNoChoices;
 }
 
-[System.Serializable]
-public class PlayerResponse
+[Serializable]
+public class DiaChoice
 {
-    public string responseText;
-    public DialogueNode nextNode;
-    [Header("Görünme Koþulu")]
-    public Condition condition;
+    public string choiceText;
+    public Condition showIf;        // butonun görünmesi için koþul
+    public DiaNode nextNode;        // týklanýnca gidilecek düðüm (boþsa kapanýr)
 }
 
-[System.Serializable]
+[Serializable]
 public class Condition
 {
-    public enum ConditionType { None, TimeOfDay, HasItem, Day }
+    public enum ConditionType
+    {
+        None,
+        TimeOfDay,      // minTime <= now < maxTime
+        HasItem,        // requiredItemID
+        Day,            // requiredDay
+        SeenToday,      // nodeIdOverride (boþsa context node)
+        NotSeenToday,   // nodeIdOverride (boþsa context node)
+        CooldownHours   // requiredCooldownHours
+    }
+
     public ConditionType type = ConditionType.None;
 
-    [Header("Time of Day Koþulu")]
+    [Header("Zaman Aralýðý")]
     public float minTime = 0f;
     public float maxTime = 24f;
 
-    [Header("Has Item Koþulu")]
-    public string requiredItemID = "";
+    [Header("Envanter")]
+    public string requiredItemID;
 
-    [Header("Day Koþulu")]
-    [Tooltip("Bu konuþmanýn/cevabýn sadece belirtilen günde görünmesini saðlar.")]
+    [Header("Gün")]
     public int requiredDay = 1;
+
+    [Header("Dialogue Memory")]
+    public string nodeIdOverride = "";    // boþsa context node'un nodeId'si
+    public float requiredCooldownHours = 0f;
 }

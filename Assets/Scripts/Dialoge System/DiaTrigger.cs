@@ -1,35 +1,49 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class DialogueTrigger : MonoBehaviour
+public class DiaTrigger : MonoBehaviour
 {
-    [Tooltip("Konuþmalar yukarýdan aþaðýya doðru kontrol edilir. Koþulu saðlanan ÝLK konuþma baþlar.")]
-    public List<ConditionalConversation> conversations;
-
-    // MouseLook bu fonksiyonu çaðýrarak doðru konuþmayý alacak
-    public DialogueNode GetConversation()
+    [System.Serializable]
+    public class ConditionalConversation
     {
-        if (DialogueUIManager.instance == null) return null;
+        public Condition condition;
+        public DiaNode conversation;
+    }
 
-        // Listeyi yukarýdan aþaðýya doðru tara
-        foreach (var conditionalConversation in conversations)
+    [Tooltip("Üstten alta öncelik: ilk geçen konuþma seçilir")]
+    public List<ConditionalConversation> conversations = new();
+
+    [Header("NPC Kimliði")]
+    public string npcId; // boþsa GenericNPCController'dan alýnýr
+    public string npcDisplayName = ""; // UI'de göstermek için (opsiyonel)
+
+    private string ResolveNpcId()
+    {
+        if (!string.IsNullOrEmpty(npcId)) return npcId;
+        var ctrl = GetComponent<GenericNPC_Controller>();
+        return (ctrl != null) ? ctrl.GetNpcID() : name; // fallback
+    }
+
+    public DiaNode GetConversation()
+    {
+        if (DiaManager.instance == null) return null;
+        string id = ResolveNpcId();
+
+        foreach (var cc in conversations)
         {
-            // Eðer bu konuþmanýn koþulu saðlanýyorsa...
-            if (DialogueUIManager.instance.CheckCondition(conditionalConversation.condition))
-            {
-                // Bu konuþmayý döndür ve aramayý durdur.
-                return conditionalConversation.conversation;
-            }
+            if (cc == null || cc.conversation == null) continue;
+            if (DiaManager.instance.CheckCondition(cc.condition, id, cc.conversation))
+                return cc.conversation;
         }
-        // Eðer hiçbir koþul saðlanmazsa, null döndür.
         return null;
     }
-}
 
-// Bu, Inspector'da daha düzenli görünmesini saðlayan yardýmcý bir sýnýftýr.
-[System.Serializable]
-public class ConditionalConversation
-{
-    public Condition condition;
-    public DialogueNode conversation;
+    public void StartConversation()
+    {
+        var node = GetConversation();
+        if (node != null)
+        {
+            DiaManager.instance.StartDialogue(node, ResolveNpcId(), npcDisplayName);
+        }
+    }
 }

@@ -1,104 +1,267 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using TMPro;
 using UnityEngine.UI;
-using UnityEngine.EventSystems;
+using TMPro;
 
-public class DialogueUIManager : MonoBehaviour
+public class DiaManager : MonoBehaviour
 {
-    public static DialogueUIManager instance;
-    [Header("UI References")]
-    [SerializeField] private GameObject dialoguePanel;
-    [SerializeField] private TextMeshProUGUI speakerNameText;
-    [SerializeField] private TextMeshProUGUI dialogueLineText;
-    [SerializeField] private GameObject choicesLayout;
-    [SerializeField] private Button[] choiceButtons;
-    [Header("Oyuncu Kontrol Referanslarý")]
-    [SerializeField] private ClassicPlayerMovement playerMovement;
-    [SerializeField] private MouseLook mouseLook;
-    private DialogueNode currentNode;
-    private bool isDialogueActive = false;
+    public static DiaManager instance;
 
-    private void Awake() { if (instance == null) instance = this; else Destroy(gameObject); }
+    [Header("UI")]
+    [SerializeField] private GameObject panel;
+    [SerializeField] private TextMeshProUGUI npcNameText;
+    [SerializeField] private TextMeshProUGUI bodyText;
+    [SerializeField] private Transform choicesParent;
+    [SerializeField] private Button choiceButtonPrefab;
 
-    public void StartDialogue(DialogueNode startingNode)
+    [Header("Devre Dýþý Býrakýlacak Sistemler")]
+    [SerializeField] private Behaviour[] systemsToDisableWhileDialogue;
+
+    // STATE
+    private DiaNode currentNode;
+    private readonly List<Button> spawnedButtons = new List<Button>();
+    private bool active = false;
+    private string currentNpcId = null;   // gün-içi hafýza baðlamý
+    private bool nodeRendered = false;    // bu node gerçekten ekranda gösterildi mi?
+
+    private void Awake()
     {
-        isDialogueActive = true;
-        dialoguePanel.SetActive(true);
-        playerMovement.enabled = false;
-        mouseLook.enabled = false;
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-        DisplayNode(startingNode);
+        if (instance == null) instance = this;
+        else { Destroy(gameObject); return; }
+
+        if (panel != null) panel.SetActive(false);
     }
 
-    private void DisplayNode(DialogueNode node)
+    // ---------- DÝYALOG BAÞLATMA ----------
+    // NPC kimliði ile baþlat (ÖNERÝLEN)
+    public void StartDialogue(DiaNode startNode, string npcId, string npcDisplayName = "")
     {
-        currentNode = node;
-        speakerNameText.text = node.speakerName;
-        dialogueLineText.text = node.dialogueLine;
-        foreach (var button in choiceButtons) { button.onClick.RemoveAllListeners(); button.gameObject.SetActive(false); }
+        currentNpcId = npcId;
+        if (npcNameText != null) npcNameText.text = npcDisplayName;
+        StartDialogue(startNode);
+    }
 
-        if (node.playerResponses.Length > 0)
+    // Geriye dönük uyumluluk (npcId olmadan)
+    public void StartDialogue(DiaNode startNode)
+    {
+        if (startNode == null) return;
+        currentNode = startNode;
+        OpenPanel();
+        RenderNode();
+    }
+
+    private void OpenPanel()
+    {
+        active = true;
+        if (panel != null) panel.SetActive(true);
+        SetSystemsEnabled(false);
+    }
+
+    private void ClosePanel()
+    {
+        active = false;
+        if (panel != null) panel.SetActive(false);
+        SetSystemsEnabled(true);
+    }
+
+    private void SetSystemsEnabled(bool enabled)
+    {
+        if (systemsToDisableWhileDialogue == null) return;
+        foreach (var b in systemsToDisableWhileDialogue)
         {
-            choicesLayout.SetActive(true);
-            int visibleButtonIndex = 0;
-            for (int i = 0; i < node.playerResponses.Length; i++)
+            if (b == null) continue;
+            b.enabled = enabled;
+        }
+    }
+
+    // ---------- RENDER ----------
+    private void RenderNode()
+    {
+        nodeRendered = false;
+
+        if (currentNode == null)
+        {
+            EndDialogue();
+            return;
+        }
+
+        // Node-level condition: saðlanmýyorsa hiç göstermeden kapat (görülmüþ sayma)
+        if (!CheckCondition(currentNode.nodeCondition, currentNpcId, currentNode))
+        {
+            EndDialogue();
+            return;
+        }
+
+        // Artýk bu node gerçekten gösteriliyor
+        nodeRendered = true;
+
+        if (bodyText != null) bodyText.text = currentNode.text;
+
+        // Seçenekleri temizle
+        foreach (var b in spawnedButtons) Destroy(b.gameObject);
+        spawnedButtons.Clear();
+
+        bool anyChoice = false;
+        foreach (var choice in currentNode.choices)
+        {
+            if (!CheckCondition(choice.showIf, currentNpcId, currentNode)) continue;
+
+            var btn = Instantiate(choiceButtonPrefab, choicesParent);
+            var label = btn.GetComponentInChildren<TextMeshProUGUI>();
+            if (label != null) label.text = choice.choiceText;
+
+            // closure güvenliði için local kopya
+            var localChoice = choice;
+            btn.onClick.AddListener(() => OnChoiceClicked(localChoice));
+
+            spawnedButtons.Add(btn);
+            anyChoice = true;
+        }
+
+        if (!anyChoice)
+        {
+            // choices yoksa veya görünür choice yoksa tek akýþ
+            if (currentNode.nextIfNoChoices != null)
             {
-                if (CheckCondition(node.playerResponses[i].condition))
+                // self-loop korumasý
+                if (currentNode.nextIfNoChoices == currentNode)
                 {
-                    if (visibleButtonIndex < choiceButtons.Length)
-                    {
-                        Button button = choiceButtons[visibleButtonIndex];
-                        button.gameObject.SetActive(true);
-                        button.GetComponentInChildren<TextMeshProUGUI>().text = node.playerResponses[i].responseText;
-                        int choiceIndex = i;
-                        button.onClick.AddListener(() => OnChoiceSelected(currentNode.playerResponses[choiceIndex]));
-                        visibleButtonIndex++;
-                    }
+                    EndDialogue();
                 }
+                else
+                {
+                    // buton göstermeden ileri
+                    GoToNode(currentNode.nextIfNoChoices);
+                }
+            }
+            else
+            {
+                // konuþmayý bitir
+                EndDialogue();
+            }
+        }
+    }
+
+    private void OnChoiceClicked(DiaChoice choice)
+    {
+        if (choice != null && choice.nextNode != null)
+        {
+            // self-loop korumasý
+            if (choice.nextNode == currentNode)
+            {
+                EndDialogue();
+            }
+            else
+            {
+                GoToNode(choice.nextNode);
             }
         }
         else
         {
-            choicesLayout.SetActive(false);
-            StartCoroutine(WaitForEndOfDialogue());
+            EndDialogue();
         }
     }
 
-    // --- BU FONKSÝYON GÜNCELLENDÝ (YENÝ KOÞUL EKLENDÝ VE PUBLIC YAPILDI) ---
-    public bool CheckCondition(Condition condition)
+    private void GoToNode(DiaNode next)
     {
-        if (condition == null) return true;
-        switch (condition.type)
+        // Bu node ekranda gerçekten gösterildiyse "görüldü" iþaretle
+        if (nodeRendered && DialogueMemory.instance != null && !string.IsNullOrEmpty(currentNpcId) && currentNode != null)
+        {
+            float now = (TimeManager.instance != null) ? TimeManager.instance.GetCurrentTime() : 0f;
+            DialogueMemory.instance.MarkSeenToday(currentNpcId, currentNode.nodeId, now);
+        }
+
+        currentNode = next;
+        RenderNode();
+    }
+
+    private void EndDialogue()
+    {
+        // Node ekranda gösterildiyse kapanýþta da görüldü say (ör. choicesýz tek ekranlar)
+        if (nodeRendered && DialogueMemory.instance != null && !string.IsNullOrEmpty(currentNpcId) && currentNode != null)
+        {
+            float now = (TimeManager.instance != null) ? TimeManager.instance.GetCurrentTime() : 0f;
+            DialogueMemory.instance.MarkSeenToday(currentNpcId, currentNode.nodeId, now);
+        }
+
+        currentNode = null;
+        currentNpcId = null;
+        nodeRendered = false;
+
+        foreach (var b in spawnedButtons) Destroy(b.gameObject);
+        spawnedButtons.Clear();
+
+        ClosePanel();
+    }
+
+    // ---------- KOÞUL KONTROL ----------
+    // Geriye dönük uyumluluk
+    public bool CheckCondition(Condition c)
+    {
+        return CheckCondition(c, null, null);
+    }
+
+    // NPC baðlamýyla geniþletilmiþ
+    public bool CheckCondition(Condition c, string npcId, DiaNode contextNode)
+    {
+        if (c == null || c.type == Condition.ConditionType.None) return true;
+
+        switch (c.type)
         {
             case Condition.ConditionType.TimeOfDay:
-                float currentTime = TimeManager.instance.GetCurrentTime();
-                return currentTime >= condition.minTime && currentTime < condition.maxTime;
+                {
+                    float now = (TimeManager.instance != null) ? TimeManager.instance.GetCurrentTime() : 0f;
+                    return now >= c.minTime && now < c.maxTime;
+                }
 
             case Condition.ConditionType.HasItem:
-                if (HandSystem.instance != null && !string.IsNullOrEmpty(condition.requiredItemID))
                 {
-                    return HandSystem.instance.HasItem(condition.requiredItemID);
+                    if (string.IsNullOrEmpty(c.requiredItemID)) return true;
+                    // Envanter kontrolü (HandSystem):
+                    return HandSystem.instance != null && HandSystem.instance.HasItem(c.requiredItemID);
                 }
-                return false;
 
             case Condition.ConditionType.Day:
-                if (TimeManager.instance != null)
                 {
-                    return TimeManager.instance.GetDayNumber() == condition.requiredDay;
+                    int day = (TimeManager.instance != null) ? TimeManager.instance.GetDayNumber() : 1;
+                    return day == c.requiredDay;
                 }
-                return false;
 
-            case Condition.ConditionType.None:
-            default:
-                return true;
+            case Condition.ConditionType.SeenToday:
+                {
+                    string id = !string.IsNullOrEmpty(c.nodeIdOverride)
+                                ? c.nodeIdOverride
+                                : (contextNode != null ? contextNode.nodeId : null);
+                    if (DialogueMemory.instance == null || string.IsNullOrEmpty(npcId) || string.IsNullOrEmpty(id)) return false;
+                    return DialogueMemory.instance.HasSeenToday(npcId, id);
+                }
+
+            case Condition.ConditionType.NotSeenToday:
+                {
+                    string id = !string.IsNullOrEmpty(c.nodeIdOverride)
+                                ? c.nodeIdOverride
+                                : (contextNode != null ? contextNode.nodeId : null);
+                    if (DialogueMemory.instance == null || string.IsNullOrEmpty(npcId) || string.IsNullOrEmpty(id)) return true;
+                    return !DialogueMemory.instance.HasSeenToday(npcId, id);
+                }
+
+            case Condition.ConditionType.CooldownHours:
+                {
+                    if (c.requiredCooldownHours <= 0f) return true;
+
+                    string id = !string.IsNullOrEmpty(c.nodeIdOverride)
+                                ? c.nodeIdOverride
+                                : (contextNode != null ? contextNode.nodeId : null);
+
+                    if (DialogueMemory.instance == null || string.IsNullOrEmpty(npcId) || string.IsNullOrEmpty(id)) return true;
+
+                    float now = (TimeManager.instance != null) ? TimeManager.instance.GetCurrentTime() : 0f;
+                    float hours;
+                    if (!DialogueMemory.instance.HoursSince(npcId, id, now, out hours)) return true; // hiç konuþulmadý ? serbest
+                    return hours >= c.requiredCooldownHours;
+                }
         }
-    }
 
-    private void OnChoiceSelected(PlayerResponse response) { EventSystem.current.SetSelectedGameObject(null); if (response.nextNode != null) { DisplayNode(response.nextNode); } else { EndDialogue(); } }
-    private IEnumerator WaitForEndOfDialogue() { yield return new WaitUntil(() => Input.GetMouseButtonDown(0)); EndDialogue(); }
-    private void EndDialogue() { isDialogueActive = false; dialoguePanel.SetActive(false); playerMovement.enabled = true; mouseLook.enabled = true; Cursor.lockState = CursorLockMode.Locked; Cursor.visible = false; }
-    public bool IsDialogueActive() { return isDialogueActive; }
+        return true;
+    }
 }
