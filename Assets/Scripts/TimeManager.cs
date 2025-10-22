@@ -8,48 +8,39 @@ public class TimeManager : MonoBehaviour
 {
     public static TimeManager instance;
 
-    [Header("Zaman Ayarlarý")]
-    [Tooltip("Gün içi saat (0–24)")]
+    [Header("Time Settings")]
+    [Tooltip("In-game hour (0–24)")]
     [SerializeField, Range(0f, 24f)] private float currentTime = 8f;
-    [Tooltip("1 gerçek saniyenin kaç oyun dakikasýna denk geldiði. Örn: 60 = 1 sn -> 1 dk")]
+    [Tooltip("How many in-game minutes per real-time second (60 = 1s -> 1min)")]
     [SerializeField] private float timeMultiplier = 60f;
     [SerializeField] private int dayNumber = 1;
 
-    [Header("Güneþ / Aydýnlatma")]
+    [Header("Sun / Lighting")]
     [SerializeField] private Light sunLight;
-    [Tooltip("Gündüz tam parlaklýk saati aralýðý (yaklaþýk)")]
+    [Tooltip("Approx. daylight hours for intensity switch")]
     [SerializeField] private Vector2 dayLightHours = new Vector2(6f, 20f);
-    [Tooltip("Gece güneþ þiddeti")]
     [SerializeField] private float nightSunIntensity = 0.2f;
-    [Tooltip("Gündüz güneþ þiddeti")]
     [SerializeField] private float daySunIntensity = 1f;
-    [Tooltip("Güneþin gökyüzündeki açý ofseti")]
     [SerializeField] private float sunYaw = -30f;
 
-    [Header("UI (Opsiyonel)")]
+    [Header("UI (Optional)")]
     [SerializeField] private TextMeshProUGUI clockText;
     [SerializeField] private TextMeshProUGUI dayText;
     [SerializeField] private Image fadeImage;
-    [SerializeField] private float fadeDuration = 1.25f;
+    [SerializeField] private float fadeDuration = 1.1f;
 
-    [Header("Uyandýrma Politikasý")]
-    [Tooltip("Sabah uyanma saati (07:00)")]
-    [SerializeField, Range(0f, 24f)] private float morningWakeHour = 7f;   // 07:00
-    [Tooltip("Akþam uyanma saati (17:00)")]
-    [SerializeField, Range(0f, 24f)] private float eveningWakeHour = 17f;  // 17:00
+    [Header("Sleep Policy")]
+    [Tooltip("Allowed sleep window (wrap supported). Default: 19:00–05:00")]
+    [SerializeField] private Vector2 sleepAllowedWindow = new Vector2(19f, 5f); // 19 -> 05 (wrap)
+    [Tooltip("Fixed wake hour")]
+    [SerializeField, Range(0f, 24f)] private float wakeHour = 7f; // always 07:00
 
-    [Header("Uyku Yasak Saatleri")]
-    [Tooltip("Bu aralýkta uyku yasak: 07–09")]
-    [SerializeField] private Vector2 morningNoSleep = new Vector2(7f, 9f);
-    [Tooltip("Bu aralýkta uyku yasak: 17–19")]
-    [SerializeField] private Vector2 eveningNoSleep = new Vector2(17f, 19f);
-
-    // Durum
+    // State
     private bool isSleeping = false;
     public bool IsSleeping => isSleeping;
 
-    // Zaman atlama olayý (NPC/dünya sistemleri dinleyebilir)
-    public event Action<float, float, int> OnTimeAdvanced; // fromHour, toHour, daysPassed
+    // Broadcast when time skips (fromHour, toHour, daysPassed)
+    public event Action<float, float, int> OnTimeAdvanced;
 
     // ------------------------------------------------------
 
@@ -69,19 +60,23 @@ public class TimeManager : MonoBehaviour
     {
         if (isSleeping) return;
 
-        currentTime += Time.deltaTime * (timeMultiplier / 3600f);
-        if (currentTime >= 24f) { currentTime -= 24f; dayNumber += 1; }
+        currentTime += Time.deltaTime * (timeMultiplier / 3600f); // hours
+        if (currentTime >= 24f)
+        {
+            currentTime -= 24f;
+            dayNumber += 1;
+        }
 
         UpdateUI();
         UpdateSun();
     }
 
     // ------------------------------------------------------
-    // KAMU API
+    // PUBLIC API
     // ------------------------------------------------------
 
     /// <summary>
-    /// Politika bazlý uyku (07–17 arasý 17:00; diðer saatler 07:00) — Uyku yasaðý (07–09, 17–19) uygulanýr.
+    /// Try to sleep. Only allowed between sleepAllowedWindow (wrap). Wakes at fixed wakeHour.
     /// </summary>
     public void Sleep()
     {
@@ -89,16 +84,16 @@ public class TimeManager : MonoBehaviour
 
         if (!CanSleepNow(out string reason))
         {
-            // Buraya UI mesajý baðlayabilirsin (Toast/Popup). Þimdilik log.
-            Debug.Log($"[TimeManager] Uyku engellendi: {reason}");
+            // Hook your UI/Toast here instead of Debug.Log if you want
+            Debug.Log($"[TimeManager] Sleep denied: {reason}");
             return;
         }
 
-        StartCoroutine(SleepToPolicy());
+        StartCoroutine(SleepToFixedWake());
     }
 
     /// <summary>
-    /// Eski çaðrýlar bozulmasýn diye politikaya yönlendirildi (parametre görmezden gelinir).
+    /// Kept for backward compatibility (ignored param).
     /// </summary>
     public void Sleep(float _ignoredHours)
     {
@@ -106,22 +101,15 @@ public class TimeManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Þu an uyunabilir mi? (Uyku yasak pencereleri kontrol edilir)
+    /// Check if we can sleep at current time (must be within allowed window).
     /// </summary>
     public bool CanSleepNow(out string reason)
     {
-        // 07–09 ve 17–19 arasýnda uyku yasak
-        if (InRange(currentTime, morningNoSleep.x, morningNoSleep.y))
+        if (!IsInWindowWrap(currentTime, sleepAllowedWindow.x, sleepAllowedWindow.y))
         {
-            reason = $"Saat {FormatHourRange(morningNoSleep)} arasýnda uyku yasak.";
+            reason = $"You can only sleep between {FormatHour(sleepAllowedWindow.x)} and {FormatHour(sleepAllowedWindow.y)}.";
             return false;
         }
-        if (InRange(currentTime, eveningNoSleep.x, eveningNoSleep.y))
-        {
-            reason = $"Saat {FormatHourRange(eveningNoSleep)} arasýnda uyku yasak.";
-            return false;
-        }
-
         reason = null;
         return true;
     }
@@ -130,10 +118,10 @@ public class TimeManager : MonoBehaviour
     public int GetDayNumber() => dayNumber;
 
     // ------------------------------------------------------
-    // ÇEKÝRDEK
+    // CORE
     // ------------------------------------------------------
 
-    private IEnumerator SleepToPolicy()
+    private IEnumerator SleepToFixedWake()
     {
         if (isSleeping) yield break;
         isSleeping = true;
@@ -141,18 +129,20 @@ public class TimeManager : MonoBehaviour
         // Fade to black
         yield return StartCoroutine(FadeRoutine(1f));
 
-        // Uyanma saatini belirle
         float fromHour = currentTime;
-        ComputePolicyWake(out float wakeHour, out int dayInc);
 
-        // Zamaný uygula
+        // Decide day increment for wake
+        // If currentTime < wakeHour -> wake same day at wakeHour
+        // else -> wake next day at wakeHour
+        int dayInc = currentTime < wakeHour ? 0 : 1;
+
         dayNumber += dayInc;
         currentTime = Mathf.Repeat(wakeHour, 24f);
 
-        // OLAYI YAYINLA ? NPC/kapý vb. sistemler yeni saate göre hizalansýn
+        // Notify listeners while screen is black
         OnTimeAdvanced?.Invoke(fromHour, currentTime, dayInc);
 
-        // Görsellik
+        // Update visuals
         UpdateUI();
         UpdateSun();
 
@@ -162,61 +152,38 @@ public class TimeManager : MonoBehaviour
         isSleeping = false;
     }
 
-    private void ComputePolicyWake(out float wakeHour, out int dayInc)
-    {
-        // 07:00 ? now < 17:00  -> bugün 17:00'de uyan
-        // aksi halde            -> 07:00'de uyan (17:00 sonrasýysa ertesi gün 07:00)
-        if (InRange(currentTime, morningWakeHour, eveningWakeHour))
-        {
-            wakeHour = eveningWakeHour;
-            dayInc = 0;
-        }
-        else
-        {
-            if (currentTime < morningWakeHour)
-            {
-                wakeHour = morningWakeHour;
-                dayInc = 0;
-            }
-            else
-            {
-                wakeHour = morningWakeHour;
-                dayInc = 1;
-            }
-        }
-    }
-
     // ------------------------------------------------------
-    // Yardýmcýlar
+    // HELPERS
     // ------------------------------------------------------
 
-    // a ? x < b (wrap yok)
-    private static bool InRange(float x, float aInclusive, float bExclusive)
+    // Wrap-aware window check:
+    // Window [a,b) with wrap support. If a < b : a ? x < b
+    // If a > b : x ? a or x < b  (e.g., 19?05)
+    private static bool IsInWindowWrap(float x, float aInclusive, float bExclusive)
     {
-        return x >= aInclusive && x < bExclusive;
+        if (Mathf.Approximately(aInclusive, bExclusive)) return true; // full-day window
+        if (aInclusive < bExclusive) return x >= aInclusive && x < bExclusive;
+        return x >= aInclusive || x < bExclusive; // wrap
     }
 
     private IEnumerator FadeRoutine(float targetAlpha)
     {
-        if (fadeImage == null || fadeDuration <= 0f)
-            yield break;
+        if (fadeImage == null || fadeDuration <= 0f) yield break;
 
         float startAlpha = fadeImage.color.a;
-        if (Mathf.Approximately(startAlpha, targetAlpha))
-            yield break;
+        if (Mathf.Approximately(startAlpha, targetAlpha)) yield break;
 
         float t = 0f;
-        Color c = fadeImage.color;
+        Color col = fadeImage.color;
         while (t < fadeDuration)
         {
             t += Time.deltaTime;
-            float a = Mathf.Lerp(startAlpha, targetAlpha, t / fadeDuration);
-            c.a = a;
-            fadeImage.color = c;
+            col.a = Mathf.Lerp(startAlpha, targetAlpha, t / fadeDuration);
+            fadeImage.color = col;
             yield return null;
         }
-        c.a = targetAlpha;
-        fadeImage.color = c;
+        col.a = targetAlpha;
+        fadeImage.color = col;
     }
 
     private void UpdateUI()
@@ -237,19 +204,16 @@ public class TimeManager : MonoBehaviour
     {
         if (sunLight == null) return;
 
-        // Güneþ açýsý
-        float sunPitch = currentTime * 15f - 90f; // 24 saatte 360°, 1 saatte 15°
+        float sunPitch = currentTime * 15f - 90f; // 24h -> 360°, 1h -> 15°
         sunLight.transform.localRotation = Quaternion.Euler(sunPitch, sunYaw, 0f);
 
-        // Ýntensity
         bool isDay = currentTime >= dayLightHours.x && currentTime <= dayLightHours.y;
         sunLight.intensity = isDay ? daySunIntensity : nightSunIntensity;
     }
 
-    private string FormatHourRange(Vector2 range)
+    private static string FormatHour(float hour)
     {
-        int a = Mathf.RoundToInt(range.x);
-        int b = Mathf.RoundToInt(range.y);
-        return $"{a:00}:00–{b:00}:00";
+        int h = Mathf.FloorToInt(Mathf.Repeat(hour, 24f));
+        return $"{h:00}:00";
     }
 }

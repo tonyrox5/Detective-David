@@ -6288,11 +6288,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TimeManager
   currentTime: 6.5
   timeMultiplier: 500
+  dayNumber: 1
   sunLight: {fileID: 410087040}
+  dayLightHours: {x: 6, y: 20}
+  nightSunIntensity: 0.2
+  daySunIntensity: 1
+  sunYaw: -30
   clockText: {fileID: 1047967864}
   dayText: {fileID: 1472626709}
   fadeImage: {fileID: 1299352283}
   fadeDuration: 2
+  sleepAllowedWindow: {x: 19, y: 4}
+  wakeHour: 7
 --- !u!4 &1451580518
 Transform:
   m_ObjectHideFlags: 0
