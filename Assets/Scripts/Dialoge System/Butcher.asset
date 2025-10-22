@@ -12,30 +12,45 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 281d2140ade028245a03fa1f29e72a23, type: 3}
   m_Name: Butcher
   m_EditorClassIdentifier: Assembly-CSharp::DialogueNode
-  speakerName: Butcher
-  dialogueLine: Hi,you must be new detective.What was your name?
-  playerResponses:
-  - responseText: I'm David
-    nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
-    condition:
+  nodeId: butcher
+  text: Hello,You are ?
+  nodeCondition:
+    type: 5
+    minTime: 0
+    maxTime: 24
+    requiredItemID: 
+    requiredDay: 1
+    nodeIdOverride: 
+    requiredCooldownHours: 0
+  choices:
+  - choiceText: David
+    showIf:
       type: 0
       minTime: 0
-      maxTime: 24
+      maxTime: 0
       requiredItemID: 
-      requiredDay: 1
-  - responseText: I'm Detective David
+      requiredDay: 0
+      nodeIdOverride: 
+      requiredCooldownHours: 0
     nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
-    condition:
+  - choiceText: Detective David
+    showIf:
       type: 0
       minTime: 0
-      maxTime: 24
+      maxTime: 0
       requiredItemID: 
-      requiredDay: 1
-  - responseText: D.D.
+      requiredDay: 0
+      nodeIdOverride: 
+      requiredCooldownHours: 0
     nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
-    condition:
+  - choiceText: D.D.
+    showIf:
       type: 0
       minTime: 0
-      maxTime: 24
+      maxTime: 0
       requiredItemID: 
-      requiredDay: 1
+      requiredDay: 0
+      nodeIdOverride: 
+      requiredCooldownHours: 0
+    nextNode: {fileID: 11400000, guid: b36b754b99be2c646941181ed0a490bd, type: 2}
+  nextIfNoChoices: {fileID: 0}
